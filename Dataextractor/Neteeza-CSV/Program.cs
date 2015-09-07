@@ -1,4 +1,20 @@
-﻿using System;
+﻿/**
+*  --> Objective of the program is to connect to neteeza database using odbc connection
+*  --> Supply the connection string parameter in app.config
+*  --> Supply the csv out  parameter in app.config
+*  --> Modify the connection time out if necessary.
+*  --> Run the console program, Spit out csv file with date-time stamp 
+*  
+* @param neteeza
+* @param csvout
+* @param commandtimeout
+* @author Sumod Madhavan 
+* @Date   9/7/2015 MM/DD/YYYY
+ * 
+ * Note : Make sure your odbc connection architecutre match with your program. Example ODBC X64 = Program Running on target X64
+*/
+#region <<Namespace>>
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -7,13 +23,19 @@ using System.Data.Odbc;
 using System.Data;
 using System.IO;
 using CsvHelper;
+#endregion
 namespace Neteeza_CSV
 {
     class Program
     {
+        #region <<class level variables>>
+        //connection string
         private static string _ConnectionString = string.Empty;
+        //path of the csv file
         private static string _Csvout = string.Empty;
+        //time out for odbc connection
         private static int _CommandTimeout;
+        //sql query
         private const string _NeteezaQuery =
                             @"select 	applicationname, masterappidshort,
                             sum(current_flag) Total,
@@ -24,70 +46,108 @@ namespace Neteeza_CSV
                             where weekenddate = (select max(weekenddate) from weekly_app_connections_detail) and sub_type in ('QBO Sub', 'QBO Free', 'QBO Trial')
                             group by applicationname,masterappidshort
                             order by applicationname;";
-        private static List<NeteezaFields> _listRecords = null;
-
+        //datastructure to hold live connections.
+        private static List<NeteezaFields> _LiveConnectionRecords = null;
+        #endregion
+        /// <summary>
+        /// Programm main starts.
+        /// 
+        /// </summary>
+        /// <param name="args"></param>
         static void Main(string[] args)
         {
             _ConnectionString = System.Configuration.ConfigurationSettings.AppSettings["neteeza"];
             _Csvout = System.Configuration.ConfigurationSettings.AppSettings["csvout"];
             _CommandTimeout = ParseInt(System.Configuration.ConfigurationSettings.AppSettings["commandtimeout"].ToString());
             var result = ReadNeteeza(_ConnectionString, _NeteezaQuery);
-            WriteCsv(result);
+            if (result.Count>0)
+            {
+                WriteCsv(result);
+            }
+            else
+            {
+                Message("No records to write.");
+            }
             Console.ReadLine();
         }
-
+        #region <<Routines>>
+        /// <summary>
+        /// Parse string to integer.
+        /// </summary>
+        /// <param name="p"></param>
+        /// <returns></returns>
         private static int ParseInt(string p)
         {
             int result;
             int.TryParse(p, out result);
             return result;
         }
-
+        /// <summary>
+        /// Writing the data retrieved from netezza to csv file.
+        /// </summary>
+        /// <param name="netRecords"></param>
         private static void WriteCsv(List<NeteezaFields> netRecords)
         {
             try
             {
-                _listRecords = netRecords.OrderBy(o => o.AppName).ToList();
-            Console.WriteLine("\nWriting Files...");
-            string pathString = _Csvout;
-            string fileName = string.Format("{0}-{1:dd-MM-yyyy-HH-mm-ss}.csv", "App-Live-Connection", DateTime.Now);
-            System.IO.Directory.CreateDirectory(pathString);
-            pathString = System.IO.Path.Combine(pathString, fileName);
-            using (var myStream = File.Open(pathString, System.IO.FileMode.Create))
-            {
-                using (var writer = new CsvWriter(new StreamWriter(myStream)))
+                _LiveConnectionRecords = netRecords.OrderBy(o => o.AppName).ToList();
+                Message("\nWriting Files...");
+                string pathString = _Csvout;
+                string fileName = string.Format("{0}-{1:dd-MM-yyyy-HH-mm-ss}.csv", "App-Live-Connection", DateTime.Now);
+                System.IO.Directory.CreateDirectory(pathString);
+                pathString = System.IO.Path.Combine(pathString, fileName);
+                using (var myStream = File.Open(pathString, System.IO.FileMode.Create))
                 {
-                    writer.Configuration.RegisterClassMap<NeteezaFieldsMap>();
-                    writer.WriteRecords(_listRecords);
+                    using (var writer = new CsvWriter(new StreamWriter(myStream)))
+                    {
+                        writer.Configuration.RegisterClassMap<NeteezaFieldsMap>();
+                        writer.WriteRecords(_LiveConnectionRecords);
+                    }
                 }
-            }
-            Console.WriteLine("Path to my file: {0}\n", pathString);
-            Console.WriteLine("Done");
+                Message(string.Format("Path to my file: {0}\n", pathString));
+                Message("Done");
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
             }
         }
-
+        /// <summary>
+        /// Pretty Print
+        /// </summary>
+        /// <param name="message"></param>
+        private static void Message(string message)
+        {
+            Console.WriteLine(message);
+        }
+        /// <summary>
+        /// Reading the data from neteeza.Require jump box connection
+        /// to retrieve the data.
+        /// Time and Space complexity = O(N) f(n) == g(n)
+        /// </summary>
+        /// <param name="connString">ODBC connection string</param>
+        /// <param name="netzQuery">Posgresql query</param>
+        /// <returns></returns>
         private static List<NeteezaFields> ReadNeteeza(string connString, string netzQuery)
         {
             try
             {
-                _listRecords = new List<NeteezaFields>();
+                _LiveConnectionRecords = new List<NeteezaFields>();
                 using (OdbcConnection odbcConnection = new OdbcConnection(connString))
                 {
-               
+
                     odbcConnection.Open();
-                    Console.WriteLine("Connection Estabilished with Neteeza...");
+                    Message("Connection Estabilished with Neteeza...");
                     using (OdbcCommand odbcCommand = new OdbcCommand(netzQuery, odbcConnection))
                     {
                         odbcCommand.CommandTimeout = _CommandTimeout;
                         using (OdbcDataReader odbcDataReader = odbcCommand.ExecuteReader())
                         {
-                            Console.WriteLine("Reading...");
+                            Message("Reading...");
                             while (odbcDataReader.Read())
                             {
+                                #region <<Debug>>
+                                /*
                                 var record = new NeteezaFields();
                                 record.AppName = odbcDataReader.GetString(0);
                                 record.MasterAppId = odbcDataReader.GetString(1);
@@ -95,63 +155,33 @@ namespace Neteeza_CSV
                                 record.QboSub = odbcDataReader.GetString(3);
                                 record.QboFree = odbcDataReader.GetString(4);
                                 record.QboTrial = odbcDataReader.GetString(5);
-                                _listRecords.Add(record);
+                                _LiveConnectionRecords.Add(record);*/
+                                #endregion
+                                _LiveConnectionRecords.Add
+                                    (
+                                    new NeteezaFields
+                                    {
+                                        AppName = odbcDataReader.GetString(0),
+                                        MasterAppId = odbcDataReader.GetString(1),
+                                        Total = odbcDataReader.GetString(2),
+                                        QboSub = odbcDataReader.GetString(3),
+                                        QboFree = odbcDataReader.GetString(4),
+                                        QboTrial = odbcDataReader.GetString(5)
+                                    }
+                                    );
                             }
                         }
                     }
                     odbcConnection.Close();
-                    Console.WriteLine("Connection Closed...");
+                    Message("Connection Closed...");
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
             }
-            return _listRecords;
+            return _LiveConnectionRecords;
         }
-
-        private static void TestMethod()
-        {
-            const string connString = "Driver=NetezzaSQL; Server={0}; Port=5480; Database={1}; Persist Security Info=true; UID={2}; PWD={3}";
-            var connection = string.Format(connString, "qysprdntzdb05.data.bos.intuit.net", "UED_QBO_WS", "SMADHAVAN", "SMADHAVAN");
-            using (OdbcConnection con = new OdbcConnection(connection))
-            {
-                con.Open();
-                using (OdbcCommand oCmd = new OdbcCommand("select * from UED_QBO_WS..WEEKLY_APP_CONNECTIONS_DETAIL", con))
-                {
-                    using (OdbcDataReader oRead = oCmd.ExecuteReader())
-                    {
-                        while (oRead.Read())
-                        {
-                            var dataRead = oRead.GetString(0);
-                        }
-                    }
-                }
-            }
-        }
-
-        private static DataSet FillDataAdapter(DataSet currentDataset, string connectionString, string queryString)
-        {
-            using (OdbcConnection connection =
-               new OdbcConnection(connectionString))
-            {
-                OdbcDataAdapter adapter =
-                    new OdbcDataAdapter(queryString, connection);
-
-                // Open the connection and fill the DataSet. 
-                try
-                {
-                    connection.Open();
-                    adapter.Fill(currentDataset);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine(ex.Message);
-                }
-                // The connection is automatically closed when the 
-                // code exits the using block.
-            }
-            return currentDataset;
-        }
+        #endregion
     }
 }
