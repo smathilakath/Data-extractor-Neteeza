@@ -24,15 +24,16 @@ Note : Target platform of the program == Installed target version of ODBC driver
 
 ## Neteeza Query
 
-		select      applicationname, masterappidshort,
-			    sum(current_flag) Total,
-			    sum(case when sub_type = 'QBO Sub' then current_flag else 0 end) QBOSub,
-			    sum(case when sub_type = 'QBO Free' then current_flag else 0 end) QBOFree,
-			    sum(case when sub_type = 'QBO Trial' then current_flag else 0 end) QBOTrial
-			    from weekly_app_connections_detail 
-			    where weekenddate = (select max(weekenddate) from weekly_app_connections_detail) and sub_type in ('QBO Sub', 'QBO Free', 'QBO Trial')
-			    group by applicationname,masterappidshort
-			    order by applicationname;
+		select a.applicationname, a.masterappidshort, b.apptoken,
+                            sum(current_flag) Total,
+                            sum(case when sub_type = 'QBO Sub' then current_flag else 0 end) QBOSub,
+                            sum(case when sub_type = 'QBO Free' then current_flag else 0 end) QBOFree,
+                            sum(case when sub_type = 'QBO Trial' then current_flag else 0 end) QBOTrial
+                            from weekly_app_connections_detail a , load_partnerapp_appmaster b
+                            where sub_type in ('QBO Sub', 'QBO Free', 'QBO Trial') and weekenddate = (select max(weekenddate) from weekly_app_connections_detail) and 
+                            a.MASTERAPPID = b.MASTERAPPID 
+                            group by a.applicationname,a.masterappidshort,b.apptoken 
+                            order by a.applicationname
 
 
 ## Screen Shots
