@@ -37,6 +37,6 @@ Note : Target platform of the program == Installed target version of ODBC driver
 
 ## Screen Shots
 
-![Alt text](images/app.JPG "Application")
+![Alt text](images/console.JPG "Application")
 
 ![Alt text](images/sample-out.JPG "Sample Out")
