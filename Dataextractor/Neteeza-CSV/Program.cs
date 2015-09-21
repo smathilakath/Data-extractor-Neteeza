@@ -36,16 +36,29 @@ namespace Neteeza_CSV
         //time out for odbc connection
         private static int _CommandTimeout;
         //sql query
+        /// <summary>
+        /// Referrence Query 1 :
+        //# @"select 	applicationname, masterappidshort,
+        //#                            sum(current_flag) Total,
+        //#                            sum(case when sub_type = 'QBO Sub' then current_flag else 0 end) QBOSub,
+        //#                            sum(case when sub_type = 'QBO Free' then current_flag else 0 end) QBOFree,
+        //#                            sum(case when sub_type = 'QBO Trial' then current_flag else 0 end) QBOTrial
+        //#                            from weekly_app_connections_detail 
+        //#                            where weekenddate = (select max(weekenddate) from weekly_app_connections_detail) and sub_type in ('QBO Sub', 'QBO Free', 'QBO Trial')
+        //#                            group by applicationname,masterappidshort
+        //#                            order by applicationname;";
+        /// </summary>
         private const string _NeteezaQuery =
-                            @"select 	applicationname, masterappidshort,
+                            @"select a.applicationname, a.masterappidshort, b.apptoken,
                             sum(current_flag) Total,
                             sum(case when sub_type = 'QBO Sub' then current_flag else 0 end) QBOSub,
                             sum(case when sub_type = 'QBO Free' then current_flag else 0 end) QBOFree,
                             sum(case when sub_type = 'QBO Trial' then current_flag else 0 end) QBOTrial
-                            from weekly_app_connections_detail 
-                            where weekenddate = (select max(weekenddate) from weekly_app_connections_detail) and sub_type in ('QBO Sub', 'QBO Free', 'QBO Trial')
-                            group by applicationname,masterappidshort
-                            order by applicationname;";
+                            from weekly_app_connections_detail a , load_partnerapp_appmaster b
+                            where sub_type in ('QBO Sub', 'QBO Free', 'QBO Trial') and weekenddate = (select max(weekenddate) from weekly_app_connections_detail) and 
+                            a.MASTERAPPID = b.MASTERAPPID 
+                            group by a.applicationname,a.masterappidshort,b.apptoken 
+                            order by a.applicationname";
         //datastructure to hold live connections.
         private static List<NeteezaFields> _LiveConnectionRecords = null;
         #endregion
@@ -93,7 +106,7 @@ namespace Neteeza_CSV
                 _LiveConnectionRecords = netRecords.OrderBy(o => o.AppName).ToList();
                 Message("\nWriting Files...");
                 string pathString = _Csvout;
-                string fileName = string.Format("{0}-{1:dd-MM-yyyy-HH-mm-ss}.csv", "App-Live-Connection", DateTime.Now);
+                string fileName = string.Format("{0}-{1:dd-MM-yyyy-HH-mm-ss}.csv", "Appliveconnections", DateTime.Now);
                 System.IO.Directory.CreateDirectory(pathString);
                 pathString = System.IO.Path.Combine(pathString, fileName);
                 using (var myStream = File.Open(pathString, System.IO.FileMode.Create))
@@ -135,14 +148,33 @@ namespace Neteeza_CSV
                 _LiveConnectionRecords = new List<NeteezaFields>();
                 using (OdbcConnection odbcConnection = new OdbcConnection(connString))
                 {
-
-                    odbcConnection.Open();
-                    Message("Connection Estabilished with Neteeza...");
+                    try
+                    {
+                        odbcConnection.Open();
+                        Message("We are doing good.Connection estabilished with neteeza.");
+                    }
+                    catch (Exception ex)
+                    {
+                        Message("OOPS!,Connection is rejected");
+                        Message(ex.Message);
+                    }
                     using (OdbcCommand odbcCommand = new OdbcCommand(netzQuery, odbcConnection))
                     {
                         odbcCommand.CommandTimeout = _CommandTimeout;
+                        Message("Processing...");
                         using (OdbcDataReader odbcDataReader = odbcCommand.ExecuteReader())
                         {
+                            //Cache the ordinal for better performance.
+                            var rowOrdinals = new
+                            {
+                                AppName = odbcDataReader.GetOrdinal("APPLICATIONNAME"),
+                                MasterAppId = odbcDataReader.GetOrdinal("MASTERAPPIDSHORT"),
+                                AppToken = odbcDataReader.GetOrdinal("APPTOKEN"),
+                                Total = odbcDataReader.GetOrdinal("TOTAL"),
+                                QboSub = odbcDataReader.GetOrdinal("QBOSUB"),
+                                QboFree = odbcDataReader.GetOrdinal("QBOFREE"),
+                                QboTrial = odbcDataReader.GetOrdinal("QBOTRIAL")
+                            };
                             Message("Reading...");
                             while (odbcDataReader.Read())
                             {
@@ -161,25 +193,27 @@ namespace Neteeza_CSV
                                     (
                                     new NeteezaFields
                                     {
-                                        AppName = odbcDataReader.GetString(0),
-                                        MasterAppId = odbcDataReader.GetString(1),
-                                        Total = odbcDataReader.GetString(2),
-                                        QboSub = odbcDataReader.GetString(3),
-                                        QboFree = odbcDataReader.GetString(4),
-                                        QboTrial = odbcDataReader.GetString(5)
+                                        AppName = odbcDataReader.GetString(rowOrdinals.AppName),
+                                        MasterAppId = odbcDataReader.GetString(rowOrdinals.MasterAppId),
+                                        AppToken = odbcDataReader.GetString(rowOrdinals.AppToken),
+                                        Total = odbcDataReader.GetString(rowOrdinals.Total),
+                                        QboSub = odbcDataReader.GetString(rowOrdinals.QboSub),
+                                        QboFree = odbcDataReader.GetString(rowOrdinals.QboFree),
+                                        QboTrial = odbcDataReader.GetString(rowOrdinals.QboTrial)
                                     }
                                     );
                             }
                         }
                     }
                     odbcConnection.Close();
-                    Message("Connection Closed...");
+                    Message("Connection closed.");
                 }
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
             }
+            Message(string.Format("Total number of records : {0}", _LiveConnectionRecords.Count));
             return _LiveConnectionRecords;
         }
         #endregion

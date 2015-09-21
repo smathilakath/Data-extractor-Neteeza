@@ -10,6 +10,7 @@ namespace Neteeza_CSV
     {
         public string AppName { get; set; }
         public string MasterAppId { get; set; }
+        public string AppToken { get; set; }
         public string Total { get; set; }
         public string QboSub { get; set; }
         public string QboFree { get; set; }
