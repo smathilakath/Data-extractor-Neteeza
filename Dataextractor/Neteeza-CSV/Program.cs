@@ -4,6 +4,7 @@
 *  --> Supply the csv out  parameter in app.config
 *  --> Modify the connection time out if necessary.
 *  --> Run the console program, Spit out csv file with date-time stamp 
+*  --> Upload file to cloud
 *  
 * @param neteeza
 * @param csvout
@@ -23,6 +24,8 @@ using System.Data.Odbc;
 using System.Data;
 using System.IO;
 using CsvHelper;
+using System.Net;
+using System.Collections.Specialized;
 #endregion
 namespace Neteeza_CSV
 {
@@ -33,6 +36,7 @@ namespace Neteeza_CSV
         private static string _ConnectionString = string.Empty;
         //path of the csv file
         private static string _Csvout = string.Empty;
+        private static string _UploadUrl = string.Empty;
         //time out for odbc connection
         private static int _CommandTimeout;
         //sql query
@@ -72,16 +76,45 @@ namespace Neteeza_CSV
             _ConnectionString = System.Configuration.ConfigurationSettings.AppSettings["neteeza"];
             _Csvout = System.Configuration.ConfigurationSettings.AppSettings["csvout"];
             _CommandTimeout = ParseInt(System.Configuration.ConfigurationSettings.AppSettings["commandtimeout"].ToString());
-            var result = ReadNeteeza(_ConnectionString, _NeteezaQuery);
-            if (result.Count>0)
+            _UploadUrl = System.Configuration.ConfigurationSettings.AppSettings["uploadurl"];
+            var liveConnections = ReadNeteeza(_ConnectionString, _NeteezaQuery);
+            if (liveConnections.Count > 0)
             {
-                WriteCsv(result);
+                var filePath = WriteCsv(liveConnections);
+                UploadFile(filePath);
             }
             else
             {
                 Message("No records to write.");
             }
             Console.ReadLine();
+        }
+        /// <summary>
+        /// the routines will upload the csv to cloud
+        /// </summary>
+        /// <param name="uploadPath">path of the file</param>
+        private static void UploadFile(string uploadPath)
+        {
+            Message("Commencing file upload...");
+            const string param = "name";
+            try
+            {
+                using (var webClient = new WebClient())
+                {
+                    webClient.UseDefaultCredentials = true;
+                    NameValueCollection parameters = new NameValueCollection();
+                    parameters.Add(param, Path.GetFileName(uploadPath));
+                    webClient.QueryString = parameters;
+                    byte[] result = webClient.UploadFile(_UploadUrl, uploadPath);
+                    string responseAsString = Encoding.Default.GetString(result);
+                    Message(string.Format("Response from Server : {0}",responseAsString));
+                    Message("Done!");
+                }
+            }
+            catch (Exception ex)
+            {
+                Message(ex.Message);
+            }
         }
         #region <<Routines>>
         /// <summary>
@@ -99,13 +132,14 @@ namespace Neteeza_CSV
         /// Writing the data retrieved from netezza to csv file.
         /// </summary>
         /// <param name="netRecords"></param>
-        private static void WriteCsv(List<NeteezaFields> netRecords)
+        private static string WriteCsv(List<NeteezaFields> netRecords)
         {
+            var pathString = string.Empty;
             try
             {
-                _LiveConnectionRecords = netRecords.OrderBy(o => o.AppName).ToList();
+                _LiveConnectionRecords = netRecords.OrderBy(o => o.Total).ToList();
                 Message("\nWriting Files...");
-                string pathString = _Csvout;
+                pathString = _Csvout;
                 string fileName = string.Format("{0}-{1:dd-MM-yyyy-HH-mm-ss}.csv", "Appliveconnections", DateTime.Now);
                 System.IO.Directory.CreateDirectory(pathString);
                 pathString = System.IO.Path.Combine(pathString, fileName);
@@ -118,12 +152,12 @@ namespace Neteeza_CSV
                     }
                 }
                 Message(string.Format("Path to my file: {0}\n", pathString));
-                Message("Done");
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
             }
+            return pathString;
         }
         /// <summary>
         /// Pretty Print

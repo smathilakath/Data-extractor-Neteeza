@@ -1,8 +1,8 @@
-# Dataextractor from Neteeza
+# Dataextractor from Neteeza and File Upload to cloud
 
 ![Alt text](images/design.jpg "Overall Design")
 
-* The objective of the program is to cover the dataextraction layer of the design.
+* The objective of the program is to cover the dataextraction and File Uploader layer of the design.
 * The program expect to be deployed in a environment where access to QDC/LVDC is available.
 * Prepare the configuration file as next step.
 
@@ -13,6 +13,7 @@
 * neteeza : Datasource
 * csvout  : path of csv file
 * commandtimeout : time out for odbc connection
+* uploadurl : url to upload
 
 ## Run
 
